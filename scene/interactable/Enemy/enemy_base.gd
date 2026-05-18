@@ -1,7 +1,8 @@
-class_name Enemy extends CharacterBody2D
+class_name EnemyBase extends CharacterBody2D
 
 @export var target_tools: Array[ItemData.Id] = []
 @export var move_speed: float = 30.0
+@export var chase_speed_multiplier: float = 1.8
 @export var detection_radius: float = 80.0
 @export var attack_range: float = 24.0
 @export var attack_damage: int = 10
@@ -20,6 +21,7 @@ var _player: CharacterBody2D
 var _start_position: Vector2
 var _patrol_direction: int = 1
 var _attack_timer: float = 0.0
+var _idle_timer: float = 0.0
 
 func _ready() -> void:
 	EventSystem.data_save.connect(save_data)
@@ -28,14 +30,19 @@ func _ready() -> void:
 	detect_area.body_entered.connect(_on_body_entered)
 	detect_area.body_exited.connect(_on_body_exited)
 
+	_patrol_direction = 1 if randf() > 0.5 else -1
+	_idle_timer = randf_range(0.5, 2.0)
+
+	_setup_states()
+	load_data()
+
+func _setup_states() -> void:
 	state_machine.add_state("idle", _enter_idle, _process_idle)
 	state_machine.add_state("patrol", _enter_patrol, _process_patrol)
 	state_machine.add_state("chase", _enter_chase, _process_chase)
 	state_machine.add_state("attack", _enter_attack, _process_attack)
 	state_machine.add_state("hurt", _enter_hurt, _process_hurt)
 	state_machine.add_state("death", _enter_death, _process_death)
-
-	load_data()
 
 func _process(delta: float) -> void:
 	if health_component.is_dead():
@@ -48,7 +55,9 @@ func _process(delta: float) -> void:
 				if dist <= detection_radius:
 					state_machine.transition_to("chase")
 				elif state_machine.is_state("idle"):
-					state_machine.transition_to("patrol")
+					_idle_timer -= delta
+					if _idle_timer <= 0:
+						state_machine.transition_to("patrol")
 
 func _physics_process(_delta: float) -> void:
 	if health_component.is_dead():
@@ -60,14 +69,22 @@ func interactor(player: CharacterBody2D) -> void:
 		return
 	if player.equipped_item in target_tools or target_tools.is_empty():
 		EventSystem.start_interaction()
-		var tool: ToolResource = ItemData.get_item_resource(player.equipped_item)
-		player.animated_sprite_2d.play(tool.use_tool_animation)
-		hit_delay_timer.start(tool.hit_delay)
-		await hit_delay_timer.timeout
-		health_component.take_damage(tool.damage)
-		state_machine.transition_to("hurt")
+		await _on_interaction_start(player)
+		health_component.take_damage(_get_interaction_damage(player))
+		if not health_component.is_dead():
+			state_machine.transition_to("hurt")
 		await player.animated_sprite_2d.animation_finished
 		EventSystem.end_interaction()
+
+func _on_interaction_start(player: CharacterBody2D) -> void:
+	var tool: ToolResource = ItemData.get_item_resource(player.equipped_item)
+	player.animated_sprite_2d.play(tool.use_tool_animation)
+	hit_delay_timer.start(tool.hit_delay)
+	await hit_delay_timer.timeout
+
+func _get_interaction_damage(player: CharacterBody2D) -> int:
+	var tool: ToolResource = ItemData.get_item_resource(player.equipped_item)
+	return tool.damage
 
 func save_data() -> void:
 	var path := "user://enemy_" + str(name) + ".tres"
@@ -106,12 +123,15 @@ func _face_movement() -> void:
 		animated_sprite_2d.scale.x = 1 if velocity.x > 0 else -1
 
 func _face_pos(pos: Vector2) -> void:
-	animated_sprite_2d.scale.x = 1 if pos.x > global_position.x else -1
+	var dx := pos.x - global_position.x
+	if abs(dx) > 2.0:
+		animated_sprite_2d.scale.x = 1 if dx > 0 else -1
 
 ## idle
 func _enter_idle() -> void:
 	animated_sprite_2d.play("idle")
-	velocity.x = 0
+	velocity = Vector2.ZERO
+	_idle_timer = randf_range(0.5, 2.0)
 
 func _process_idle(_delta: float) -> void:
 	pass
@@ -139,20 +159,20 @@ func _process_chase(_delta: float) -> void:
 		return
 	var dist = global_position.distance_to(_player.global_position)
 	if dist <= attack_range:
-		velocity.x = 0
+		velocity = Vector2.ZERO
 		state_machine.transition_to("attack")
 		return
-	if dist > detection_radius:
+	if dist > detection_radius * 1.5:
 		state_machine.transition_to("patrol")
 		return
-	var dir = sign(_player.global_position.x - global_position.x)
-	velocity.x = dir * move_speed
+	var dir_to_player = (_player.global_position - global_position).normalized()
+	velocity = dir_to_player * move_speed * chase_speed_multiplier
 	_face_pos(_player.global_position)
 
 ## attack
 func _enter_attack() -> void:
 	animated_sprite_2d.play("attack")
-	velocity.x = 0
+	velocity = Vector2.ZERO
 	_attack_timer = attack_cooldown
 
 func _process_attack(_delta: float) -> void:
@@ -170,7 +190,7 @@ func _process_attack(_delta: float) -> void:
 ## hurt
 func _enter_hurt() -> void:
 	animated_sprite_2d.play("hurt")
-	velocity.x = 0
+	velocity = Vector2.ZERO
 
 func _process_hurt(_delta: float) -> void:
 	if _player:
@@ -183,7 +203,7 @@ func _enter_death() -> void:
 	animated_sprite_2d.play("death")
 	detect_area.monitoring = false
 	collision_layer = 0
-	velocity.x = 0
+	velocity = Vector2.ZERO
 
 func _process_death(_delta: float) -> void:
 	if not animated_sprite_2d.is_playing():

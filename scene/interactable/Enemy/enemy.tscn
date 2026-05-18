@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c32owd8v86kl3"]
 
-[ext_resource type="Script" uid="uid://bkgj6h6pswux6" path="res://scene/interactable/enemy.gd" id="1_enemy"]
+[ext_resource type="Script" uid="uid://c0jjjsemxr1td" path="res://scene/interactable/Enemy/enemy.gd" id="1_enemy"]
 [ext_resource type="Script" uid="uid://1bah8k007wub" path="res://components/health_component.gd" id="2_hc"]
 [ext_resource type="Script" uid="uid://daywy4etl2lmj" path="res://components/state_machine.gd" id="3_sm"]
 [ext_resource type="Script" uid="uid://c4tbkdcedl1j1" path="res://scene/interactable/interaction_proxy.gd" id="4_proxy"]
@@ -10,7 +10,8 @@
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_27gg3"]
 
-[sub_resource type="SeparationRayShape2D" id="SeparationRayShape2D_27gg3"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_detect"]
+radius = 45.17743
 
 [sub_resource type="CapsuleShape2D" id="Capsule_body"]
 radius = 6.0
@@ -121,6 +122,8 @@ collision_layer = 4
 collision_mask = 4
 script = ExtResource("1_enemy")
 target_tools = Array[int]([2, 1])
+chase_speed_multiplier = 0.8
+attack_damage = 30
 prompt = "Cut Tree Monster"
 
 [node name="InteractionProxy" type="Area2D" parent="." unique_id=969835196]
@@ -143,8 +146,7 @@ script = ExtResource("3_sm")
 collision_layer = 0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="DetectArea" unique_id=2045987081]
-rotation = -1.5707964
-shape = SubResource("SeparationRayShape2D_27gg3")
+shape = SubResource("CircleShape2D_detect")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2056951173]
 shape = SubResource("Capsule_body")
